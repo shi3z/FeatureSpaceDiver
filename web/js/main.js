@@ -215,7 +215,7 @@ const ctrl = [renderer.xr.getController(0), renderer.xr.getController(1)];
 ctrl.forEach((c) => rig.add(c));
 const headDir = new THREE.Vector3();
 const headRight = new THREE.Vector3();
-let triggerLatch = false;
+let morphButtonLatch = false;
 let camButtonLatch = false;
 let vrCaptureBusy = false;
 
@@ -242,20 +242,27 @@ async function vrCapture(gp) {
   vrCaptureBusy = false;
 }
 
+// Everything is reachable from the right controller alone:
+//   trigger (analog) = fly forward along your gaze   grip = speed boost
+//   stick = turn & up/down    B = morph A⇔B    A = passthrough photo
+// The left controller adds strafing on its stick (and Y/X mirror B/A).
 function handleVRInput(dt) {
   const session = renderer.xr.getSession();
   if (!session) return;
-  let trigger = false;
+  let morphBtn = false;
   let camBtn = false;
   let camGp = null;
+  camera.getWorldDirection(headDir);
+  headRight.crossVectors(headDir, camera.up).normalize();
   for (const src of session.inputSources) {
     const gp = src.gamepad;
     if (!gp) continue;
     const ax = gp.axes.length >= 4 ? [gp.axes[2], gp.axes[3]] : [gp.axes[0] || 0, gp.axes[1] || 0];
     const boost = gp.buttons[1]?.pressed ? 3.0 : 1.0; // squeeze = fast
     const speed = 14 * boost * dt;
-    camera.getWorldDirection(headDir);
-    headRight.crossVectors(headDir, camera.up).normalize();
+    // trigger dives forward in the direction you are looking (analog pressure = speed)
+    const dive = gp.buttons[0]?.value ?? (gp.buttons[0]?.pressed ? 1 : 0);
+    if (dive > 0.05) rig.position.addScaledVector(headDir, dive * speed);
     if (src.handedness === "left") {
       if (Math.abs(ax[0]) > 0.1) rig.position.addScaledVector(headRight, ax[0] * speed);
       if (Math.abs(ax[1]) > 0.1) rig.position.addScaledVector(headDir, -ax[1] * speed);
@@ -263,15 +270,15 @@ function handleVRInput(dt) {
       if (Math.abs(ax[1]) > 0.1) rig.position.y -= ax[1] * speed;
       if (Math.abs(ax[0]) > 0.2) rig.rotateY(-ax[0] * 1.4 * dt);
     }
-    if (gp.buttons[0]?.pressed) trigger = true;
+    if (gp.buttons[5]?.pressed) morphBtn = true; // B / Y button
     if (gp.buttons[4]?.pressed) { camBtn = true; camGp = gp; } // A / X button
   }
-  if (trigger && !triggerLatch) {
-    // trigger toggles the morph, the signature move of Feature Space Diver
+  if (morphBtn && !morphButtonLatch) {
+    // the signature move of Feature Space Diver
     morph.target = morph.target > 0.5 ? 0 : 1;
     morph.auto = false;
   }
-  triggerLatch = trigger;
+  morphButtonLatch = morphBtn;
   if (camBtn && !camButtonLatch) vrCapture(camGp);
   camButtonLatch = camBtn;
 }

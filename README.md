@@ -48,8 +48,13 @@ hover a point to see the original image and class name / add images from the bot
 ## 3. View in VR (WebXR)
 
 Click the **Enter VR** button at the bottom of the page.
-- Left stick: fly forward/backward/strafe / Right stick: turn & move up/down
-- Trigger: toggle state A⇔B (morph) / Grip: speed boost
+Everything is reachable from the **right controller alone**:
+- **Trigger (hold)**: dive forward in the direction you are looking (pressure = speed)
+- **Stick**: turn & move up/down / **Grip**: speed boost
+- **B**: toggle state A⇔B (morph) / **A**: passthrough-camera photo (Quest 3/3S)
+
+The left controller optionally adds strafing on its stick, and its Y/X buttons
+mirror B/A.
 
 ### Passthrough camera capture inside VR (Quest 3 / 3S)
 
