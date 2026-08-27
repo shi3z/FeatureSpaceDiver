@@ -51,6 +51,16 @@ Click the **Enter VR** button at the bottom of the page.
 - Left stick: fly forward/backward/strafe / Right stick: turn & move up/down
 - Trigger: toggle state A⇔B (morph) / Grip: speed boost
 
+### Passthrough camera capture inside VR (Quest 3 / 3S)
+
+Since Horizon OS v74 the Quest Browser exposes the headset's RGB passthrough camera
+through `navigator.mediaDevices.getUserMedia()`. In CIFAR-10 mode, entering VR
+requests the headset-camera permission once; after that, **press the A or X button
+to photograph whatever you are looking at** — the photo is embedded in-browser with
+MobileNetV2 and the new point flies from your headset into its place in feature
+space (morphing with everything else when you pull the trigger).
+Requires Quest 3 / 3S on Horizon OS v74+ (older headsets don't expose the camera).
+
 On Meta Quest the **easiest way is to open the GitHub Pages demo URL (HTTPS)**.
 To view a local dev build on Quest you need HTTPS (or a localhost equivalent):
 

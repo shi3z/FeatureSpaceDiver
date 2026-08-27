@@ -49,7 +49,7 @@ const userGroup = new THREE.Group();
 scene.add(userGroup);
 const userPoints = []; // {sprite, posA, posB}
 
-function addUserPoint(posA, posB, thumbCanvas) {
+function addUserPoint(posA, posB, thumbCanvas, spawnFrom = null) {
   const c = document.createElement("canvas");
   c.width = c.height = 72;
   const ctx = c.getContext("2d");
@@ -62,7 +62,11 @@ function addUserPoint(posA, posB, thumbCanvas) {
     new THREE.SpriteMaterial({ map: tex, depthTest: true }));
   sprite.scale.setScalar(1.6);
   userGroup.add(sprite);
-  userPoints.push({ sprite, posA, posB });
+  userPoints.push({
+    sprite, posA, posB,
+    // when spawned from a VR capture, the sprite flies from the headset to its home
+    anim: spawnFrom ? { from: spawnFrom.clone(), start: performance.now() } : null,
+  });
   updateUserPoints();
 }
 
@@ -71,14 +75,24 @@ function easedT() {
   return tt * tt * (3 - 2 * tt);
 }
 
+const tmpTarget = new THREE.Vector3();
 function updateUserPoints() {
   const s = easedT();
+  const now = performance.now();
   for (const p of userPoints) {
-    p.sprite.position.set(
+    tmpTarget.set(
       (p.posA[0] + (p.posB[0] - p.posA[0]) * s) * WORLD_SCALE,
       (p.posA[1] + (p.posB[1] - p.posA[1]) * s) * WORLD_SCALE,
       (p.posA[2] + (p.posB[2] - p.posA[2]) * s) * WORLD_SCALE
     );
+    if (p.anim) {
+      const k = Math.min(1, (now - p.anim.start) / 1800);
+      const e = k * k * (3 - 2 * k);
+      p.sprite.position.lerpVectors(p.anim.from, tmpTarget, e);
+      if (k >= 1) p.anim = null;
+    } else {
+      p.sprite.position.copy(tmpTarget);
+    }
   }
 }
 
@@ -202,11 +216,38 @@ ctrl.forEach((c) => rig.add(c));
 const headDir = new THREE.Vector3();
 const headRight = new THREE.Vector3();
 let triggerLatch = false;
+let camButtonLatch = false;
+let vrCaptureBusy = false;
+
+// Passthrough camera capture from inside VR (Quest 3 / 3S, Horizon OS v74+):
+// the Quest Browser exposes the headset RGB camera through getUserMedia, so we
+// grab a frame from the same hidden <video>, embed it, and let the new point
+// fly from the headset into its home in feature space.
+async function vrCapture(gp) {
+  if (vrCaptureBusy) return;
+  if (!(embedder instanceof PhotoEmbedder)) return; // needs the photo (CIFAR-10) space
+  if (!camStream || camVideo.videoWidth === 0) return;
+  vrCaptureBusy = true;
+  try {
+    gp?.hapticActuators?.[0]?.pulse?.(0.7, 80); // shutter feedback
+    const { posA, posB, thumb } = await embedder.embed(camVideo);
+    const spawn = new THREE.Vector3();
+    camera.getWorldPosition(spawn);
+    camera.getWorldDirection(headDir);
+    spawn.addScaledVector(headDir, 0.6);
+    addUserPoint(posA, posB, thumb, spawn);
+  } catch (err) {
+    console.error(err);
+  }
+  vrCaptureBusy = false;
+}
 
 function handleVRInput(dt) {
   const session = renderer.xr.getSession();
   if (!session) return;
   let trigger = false;
+  let camBtn = false;
+  let camGp = null;
   for (const src of session.inputSources) {
     const gp = src.gamepad;
     if (!gp) continue;
@@ -223,6 +264,7 @@ function handleVRInput(dt) {
       if (Math.abs(ax[0]) > 0.2) rig.rotateY(-ax[0] * 1.4 * dt);
     }
     if (gp.buttons[0]?.pressed) trigger = true;
+    if (gp.buttons[4]?.pressed) { camBtn = true; camGp = gp; } // A / X button
   }
   if (trigger && !triggerLatch) {
     // trigger toggles the morph, the signature move of Feature Space Diver
@@ -230,11 +272,16 @@ function handleVRInput(dt) {
     morph.auto = false;
   }
   triggerLatch = trigger;
+  if (camBtn && !camButtonLatch) vrCapture(camGp);
+  camButtonLatch = camBtn;
 }
 
 renderer.xr.addEventListener("sessionstart", () => {
   controls.enabled = false;
   rig.position.set(0, -1.2, 30); // eye height gets added by the headset
+  // In the photo space, open the passthrough camera so A/X can snap photos.
+  // On Quest 3 this triggers the headset-camera permission dialog once.
+  if (embedder instanceof PhotoEmbedder && !camStream) startCamera();
 });
 renderer.xr.addEventListener("sessionend", () => {
   controls.enabled = true;
@@ -463,3 +510,6 @@ renderer.setAnimationLoop(() => {
 });
 
 loadDataset(document.getElementById("dataset").value);
+
+// debug hook (also handy for testing the VR capture path without a headset)
+window.__fsdVrCapture = vrCapture;
