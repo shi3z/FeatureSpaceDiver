@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -50,10 +50,10 @@
 <div class="panel" id="hud">
   <h1>FEATURE SPACE <span>DIVER</span></h1>
   <div class="row">
-    <label>データ</label>
+    <label>Dataset</label>
     <select id="dataset">
-      <option value="mnist">MNIST（数字）</option>
-      <option value="cifar10">一般画像（CIFAR-10）</option>
+      <option value="mnist">MNIST (digits)</option>
+      <option value="cifar10">Natural images (CIFAR-10)</option>
     </select>
   </div>
   <div class="statelbl"><span id="labelA">State A</span><span id="labelB">State B</span></div>
@@ -63,13 +63,13 @@
     <button id="toB">B</button>
   </div>
   <div class="row">
-    <label><input type="checkbox" id="auto"> 自動往復</label>
-    <label style="margin-left:auto">点サイズ</label>
+    <label><input type="checkbox" id="auto"> Auto loop</label>
+    <label style="margin-left:auto">Point size</label>
     <input type="range" id="psize" min="0.3" max="4" step="0.1" value="1" style="width:70px">
   </div>
   <div id="status"></div>
-  <div class="hint">ドラッグ: 回転 / ホイール: ズーム / 右ドラッグ: 平行移動 / Space: A⇔B切替<br>
-  VR: 左スティック=移動, 右スティック=旋回・上下, トリガー=A⇔B, グリップ=加速</div>
+  <div class="hint">Drag: rotate / Wheel: zoom / Right-drag: pan / Space: toggle A⇔B<br>
+  VR: left stick = move, right stick = turn & up/down, trigger = A⇔B, grip = speed boost</div>
 </div>
 
 <div class="panel" id="legend"></div>
@@ -81,32 +81,33 @@
 
 <div class="panel" id="addbox">
   <div id="drawPanel">
-    <h2>数字を描いて空間に追加</h2>
+    <h2>Draw a digit to add it</h2>
     <canvas id="pad" width="224" height="224"></canvas>
     <div class="row">
-      <button id="padAdd">追加</button>
-      <button id="padClear">消去</button>
+      <button id="padAdd">Add</button>
+      <button id="padClear">Clear</button>
     </div>
-    <div class="hint">描いた数字がエンコーダを通って潜在空間に飛び込みます（白枠の点）。</div>
+    <div class="hint">Your drawing goes through the encoder and dives into the latent space
+    (white-framed point).</div>
   </div>
   <div id="uploadPanel" style="display:none">
-    <h2>画像を追加</h2>
+    <h2>Add images</h2>
     <input type="file" id="file" accept="image/*" multiple>
     <div class="row">
-      <button id="camToggle">📷 カメラ起動</button>
+      <button id="camToggle">📷 Start camera</button>
     </div>
     <div id="camBox" style="display:none">
       <video id="camVideo" autoplay playsinline muted></video>
       <div class="row">
-        <button id="camShot">撮影して追加</button>
+        <button id="camShot">Capture & add</button>
         <select id="camFacing">
-          <option value="environment">背面</option>
-          <option value="user">前面</option>
+          <option value="environment">Rear</option>
+          <option value="user">Front</option>
         </select>
       </div>
     </div>
-    <div class="hint">アップロード/撮影した画像をブラウザ内のMobileNetV2で埋め込み、
-    同じ特徴空間に配置します（白枠の点）。</div>
+    <div class="hint">Uploaded or captured images are embedded with MobileNetV2 in your browser
+    and placed into the same feature space (white-framed points).</div>
   </div>
 </div>
 

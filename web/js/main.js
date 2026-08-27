@@ -116,7 +116,7 @@ function loadTexture(url) {
 }
 
 async function loadDataset(name) {
-  setStatus("読み込み中...");
+  setStatus("Loading...");
   try {
     const base = `data/${name}`;
     const meta = await (await fetch(`${base}/meta.json`)).json();
@@ -138,10 +138,10 @@ async function loadDataset(name) {
     labelB.textContent = meta.stateB;
     buildLegend(meta, cloud.palette);
     setupUserInput(name, meta);
-    setStatus(`${meta.name}: ${meta.count.toLocaleString()} 点`);
+    setStatus(`${meta.name}: ${meta.count.toLocaleString()} points`);
   } catch (e) {
     console.error(e);
-    setStatus(`読み込み失敗: ${e.message}（pipelineでデータを生成してください）`);
+    setStatus(`Failed to load: ${e.message} (generate the data with the pipeline scripts)`);
   }
 }
 
@@ -330,7 +330,7 @@ document.getElementById("padAdd").addEventListener("click", async () => {
 
 document.getElementById("file").addEventListener("change", async (e) => {
   if (!embedder) return;
-  setStatus("画像を埋め込み中...（初回はモデル読み込みに少し時間がかかります）");
+  setStatus("Embedding images... (the first run takes a moment to load the model)");
   for (const f of e.target.files) {
     const img = new Image();
     img.src = URL.createObjectURL(f);
@@ -341,13 +341,13 @@ document.getElementById("file").addEventListener("change", async (e) => {
       flyTo(posA, posB);
     } catch (err) {
       console.error(err);
-      setStatus(`埋め込み失敗: ${err.message}`);
+      setStatus(`Embedding failed: ${err.message}`);
       return;
     } finally {
       URL.revokeObjectURL(img.src);
     }
   }
-  setStatus(`${e.target.files.length} 枚追加しました（白枠の点）`);
+  setStatus(`Added ${e.target.files.length} image(s) (white-framed points)`);
   e.target.value = "";
 });
 
@@ -359,7 +359,7 @@ let camStream = null;
 
 async function startCamera() {
   if (!navigator.mediaDevices?.getUserMedia) {
-    setStatus("この環境ではカメラを使えません（HTTPSまたはlocalhostが必要）");
+    setStatus("Camera is not available here (HTTPS or localhost required)");
     return;
   }
   try {
@@ -373,10 +373,10 @@ async function startCamera() {
     });
     camVideo.srcObject = camStream;
     camBox.style.display = "block";
-    camToggle.textContent = "カメラ停止";
+    camToggle.textContent = "Stop camera";
   } catch (err) {
     console.error(err);
-    setStatus(`カメラを起動できません: ${err.message}`);
+    setStatus(`Could not start the camera: ${err.message}`);
   }
 }
 
@@ -387,7 +387,7 @@ function stopCamera() {
   }
   camVideo.srcObject = null;
   camBox.style.display = "none";
-  camToggle.textContent = "📷 カメラ起動";
+  camToggle.textContent = "📷 Start camera";
 }
 
 camToggle.addEventListener("click", () => (camStream ? stopCamera() : startCamera()));
@@ -396,15 +396,15 @@ document.getElementById("camFacing").addEventListener("change", () => {
 });
 document.getElementById("camShot").addEventListener("click", async () => {
   if (!embedder || !camStream || camVideo.videoWidth === 0) return;
-  setStatus("撮影画像を埋め込み中...");
+  setStatus("Embedding the captured photo...");
   try {
     const { posA, posB, thumb } = await embedder.embed(camVideo);
     addUserPoint(posA, posB, thumb);
     flyTo(posA, posB);
-    setStatus("撮影画像を追加しました（白枠の点）");
+    setStatus("Added the captured photo (white-framed point)");
   } catch (err) {
     console.error(err);
-    setStatus(`埋め込み失敗: ${err.message}`);
+    setStatus(`Embedding failed: ${err.message}`);
   }
 });
 
