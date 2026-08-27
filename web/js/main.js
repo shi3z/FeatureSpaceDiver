@@ -2,10 +2,10 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { VRButton } from "three/addons/webxr/VRButton.js";
 import { PointCloud } from "./pointcloud.js";
-import { DigitEmbedder, PhotoEmbedder } from "./embed.js?v=11";
+import { DigitEmbedder, PhotoEmbedder } from "./embed.js?v=12";
 
 const WORLD_SCALE = 18;
-const BUILD = "2026-08-27 #11 (OS-permission hints)";
+const BUILD = "2026-08-27 #12 (debug view removed)";
 
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -297,14 +297,11 @@ function handleVRInput(dt) {
 renderer.xr.addEventListener("sessionstart", () => {
   controls.enabled = false;
   rig.position.set(0, -1.2, 30); // eye height gets added by the headset
-  hudPanel.visible = true;
-  setStatus("VR session started");
   // In the photo space, open the passthrough camera so A can snap photos.
   // On Quest 3 this triggers the headset-camera permission dialog once.
   if (embedder instanceof PhotoEmbedder && !camStream) startCamera();
 });
 renderer.xr.addEventListener("sessionend", () => {
-  hudPanel.visible = false;
   controls.enabled = true;
   rig.position.set(0, 0, 0);
   rig.rotation.set(0, 0, 0);
@@ -318,60 +315,13 @@ const autoChk = document.getElementById("auto");
 const labelA = document.getElementById("labelA");
 const labelB = document.getElementById("labelB");
 
-// ---------- status line + on-page & in-VR debug log ----------
-const logLines = [];
-const hudCanvas = document.createElement("canvas");
-hudCanvas.width = 1024;
-hudCanvas.height = 256;
-const hudCtx = hudCanvas.getContext("2d");
-const hudTex = new THREE.CanvasTexture(hudCanvas);
-const hudPanel = new THREE.Mesh(
-  new THREE.PlaneGeometry(0.9, 0.225),
-  new THREE.MeshBasicMaterial({ map: hudTex, transparent: true, depthTest: false })
-);
-hudPanel.position.set(0, -0.38, -1.0);
-hudPanel.renderOrder = 999;
-hudPanel.visible = false; // shown only inside VR
-camera.add(hudPanel);
-
-function drawHud() {
-  // wrap long lines so hints stay readable inside VR
-  const rows = [];
-  for (const l of logLines.slice(-7)) {
-    for (let i = 0; i < l.length; i += 72) rows.push(l.slice(i, i + 72));
-  }
-  const show = rows.slice(-8);
-  hudCtx.clearRect(0, 0, 1024, 256);
-  hudCtx.fillStyle = "rgba(5,8,20,0.78)";
-  hudCtx.fillRect(0, 0, 1024, 256);
-  hudCtx.fillStyle = "#cfe0ff";
-  hudCtx.font = "24px sans-serif";
-  show.forEach((l, i) => hudCtx.fillText(l, 14, 30 + i * 29));
-  hudTex.needsUpdate = true;
-}
-
 function setStatus(s) {
   document.getElementById("status").textContent = s;
-  const t = new Date().toTimeString().slice(0, 8);
-  logLines.push(`[${t}] ${s}`);
-  if (logLines.length > 80) logLines.shift();
-  const pre = document.getElementById("log");
-  if (pre) {
-    pre.textContent = logLines.join("\n");
-    pre.scrollTop = pre.scrollHeight;
-  }
-  drawHud();
   console.log("[FSD]", s);
 }
 window.addEventListener("error", (e) => setStatus(`Error: ${e.message}`));
 window.addEventListener("unhandledrejection", (e) =>
   setStatus(`Error: ${e.reason?.message || e.reason}`));
-document.getElementById("logCopy").addEventListener("click", (e) => {
-  e.preventDefault();
-  navigator.clipboard?.writeText(logLines.join("\n"))
-    .then(() => setStatus("Log copied to clipboard"))
-    .catch((err) => setStatus(`Copy failed: ${err.message}`));
-});
 
 slider.addEventListener("input", () => {
   morph.current = morph.target = parseFloat(slider.value);
@@ -708,8 +658,7 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 
-setStatus(`Build: ${BUILD}`);
-setStatus(navigator.userAgent);
+console.log(`[FSD] Build: ${BUILD}`, navigator.userAgent);
 loadDataset(document.getElementById("dataset").value);
 
 // debug hook (also handy for testing the VR capture path without a headset)
