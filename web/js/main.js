@@ -225,8 +225,15 @@ let vrCaptureBusy = false;
 // fly from the headset into its home in feature space.
 async function vrCapture(gp) {
   if (vrCaptureBusy) return;
-  if (!(embedder instanceof PhotoEmbedder)) return; // needs the photo (CIFAR-10) space
-  if (!camStream || camVideo.videoWidth === 0) return;
+  if (!(embedder instanceof PhotoEmbedder))
+    return setStatus("Capture needs the CIFAR-10 (photo) dataset");
+  if (!camStream) {
+    setStatus("No camera stream — starting camera...");
+    startCamera();
+    return;
+  }
+  if (camVideo.videoWidth === 0)
+    return setStatus("Camera has no frames yet — try again in a moment");
   vrCaptureBusy = true;
   try {
     gp?.hapticActuators?.[0]?.pulse?.(0.7, 80); // shutter feedback
@@ -236,8 +243,10 @@ async function vrCapture(gp) {
     camera.getWorldDirection(headDir);
     spawn.addScaledVector(headDir, 0.6);
     addUserPoint(posA, posB, thumb, spawn);
+    setStatus("Captured — the photo is flying to its place");
   } catch (err) {
     console.error(err);
+    setStatus(`Capture failed: ${err.message}`);
   }
   vrCaptureBusy = false;
 }
@@ -286,11 +295,14 @@ function handleVRInput(dt) {
 renderer.xr.addEventListener("sessionstart", () => {
   controls.enabled = false;
   rig.position.set(0, -1.2, 30); // eye height gets added by the headset
-  // In the photo space, open the passthrough camera so A/X can snap photos.
+  hudPanel.visible = true;
+  setStatus("VR session started");
+  // In the photo space, open the passthrough camera so A can snap photos.
   // On Quest 3 this triggers the headset-camera permission dialog once.
   if (embedder instanceof PhotoEmbedder && !camStream) startCamera();
 });
 renderer.xr.addEventListener("sessionend", () => {
+  hudPanel.visible = false;
   controls.enabled = true;
   rig.position.set(0, 0, 0);
   rig.rotation.set(0, 0, 0);
@@ -304,7 +316,48 @@ const autoChk = document.getElementById("auto");
 const labelA = document.getElementById("labelA");
 const labelB = document.getElementById("labelB");
 
-function setStatus(s) { document.getElementById("status").textContent = s; }
+// ---------- status line + on-page & in-VR debug log ----------
+const logLines = [];
+const hudCanvas = document.createElement("canvas");
+hudCanvas.width = 1024;
+hudCanvas.height = 256;
+const hudCtx = hudCanvas.getContext("2d");
+const hudTex = new THREE.CanvasTexture(hudCanvas);
+const hudPanel = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.9, 0.225),
+  new THREE.MeshBasicMaterial({ map: hudTex, transparent: true, depthTest: false })
+);
+hudPanel.position.set(0, -0.38, -1.0);
+hudPanel.renderOrder = 999;
+hudPanel.visible = false; // shown only inside VR
+camera.add(hudPanel);
+
+function drawHud() {
+  hudCtx.clearRect(0, 0, 1024, 256);
+  hudCtx.fillStyle = "rgba(5,8,20,0.72)";
+  hudCtx.fillRect(0, 0, 1024, 256);
+  hudCtx.fillStyle = "#cfe0ff";
+  hudCtx.font = "30px sans-serif";
+  logLines.slice(-5).forEach((l, i) => hudCtx.fillText(l.slice(0, 62), 16, 42 + i * 42));
+  hudTex.needsUpdate = true;
+}
+
+function setStatus(s) {
+  document.getElementById("status").textContent = s;
+  const t = new Date().toTimeString().slice(0, 8);
+  logLines.push(`[${t}] ${s}`);
+  if (logLines.length > 80) logLines.shift();
+  const pre = document.getElementById("log");
+  if (pre) {
+    pre.textContent = logLines.join("\n");
+    pre.scrollTop = pre.scrollHeight;
+  }
+  drawHud();
+  console.log("[FSD]", s);
+}
+window.addEventListener("error", (e) => setStatus(`Error: ${e.message}`));
+window.addEventListener("unhandledrejection", (e) =>
+  setStatus(`Error: ${e.reason?.message || e.reason}`));
 
 slider.addEventListener("input", () => {
   morph.current = morph.target = parseFloat(slider.value);
@@ -446,15 +499,29 @@ async function startCamera() {
   }
   stopCamera();
   setStatus("Starting camera...");
+  try {
+    const pre = (await navigator.mediaDevices.enumerateDevices())
+      .filter((d) => d.kind === "videoinput");
+    setStatus(`Found ${pre.length} video input device(s)`);
+  } catch (e) {
+    setStatus(`enumerateDevices failed: ${e.message}`);
+  }
   // Quest Browser can be picky about constraints — fall back to plain video:true
   let stream = null;
   let lastErr = null;
   for (const constraints of [cameraConstraints(), { video: true, audio: false }]) {
+    setStatus(`getUserMedia(${JSON.stringify(constraints.video).slice(0, 40)})...`);
     try {
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      stream = await Promise.race([
+        navigator.mediaDevices.getUserMedia(constraints),
+        new Promise((_, rej) => setTimeout(
+          () => rej(Object.assign(new Error("no response for 15s (permission dialog pending?)"),
+                                  { name: "Timeout" })), 15000)),
+      ]);
       break;
     } catch (err) {
       lastErr = err;
+      setStatus(`→ failed: ${err.name}: ${err.message}`);
     }
   }
   if (!stream) {
