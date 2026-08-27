@@ -227,17 +227,18 @@ async function vrCapture(gp) {
   if (vrCaptureBusy) return;
   if (!(embedder instanceof PhotoEmbedder))
     return setStatus("Capture needs the CIFAR-10 (photo) dataset");
+  if (camStarting) return setStatus("Camera is starting — wait a moment");
   if (!camStream) {
     setStatus("No camera stream — starting camera...");
     startCamera();
     return;
   }
-  if (camVideo.videoWidth === 0)
-    return setStatus("Camera has no frames yet — try again in a moment");
   vrCaptureBusy = true;
   try {
     gp?.hapticActuators?.[0]?.pulse?.(0.7, 80); // shutter feedback
-    const { posA, posB, thumb } = await embedder.embed(camVideo);
+    const frame = await grabCameraFrame();
+    const { posA, posB, thumb } = await embedder.embed(frame);
+    frame.close?.();
     const spawn = new THREE.Vector3();
     camera.getWorldPosition(spawn);
     camera.getWorldDirection(headDir);
@@ -358,6 +359,12 @@ function setStatus(s) {
 window.addEventListener("error", (e) => setStatus(`Error: ${e.message}`));
 window.addEventListener("unhandledrejection", (e) =>
   setStatus(`Error: ${e.reason?.message || e.reason}`));
+document.getElementById("logCopy").addEventListener("click", (e) => {
+  e.preventDefault();
+  navigator.clipboard?.writeText(logLines.join("\n"))
+    .then(() => setStatus("Log copied to clipboard"))
+    .catch((err) => setStatus(`Copy failed: ${err.message}`));
+});
 
 slider.addEventListener("input", () => {
   morph.current = morph.target = parseFloat(slider.value);
@@ -492,61 +499,91 @@ async function populateCameraList() {
   }
 }
 
+let camStarting = false;
+
 async function startCamera() {
   if (!navigator.mediaDevices?.getUserMedia) {
     setStatus("Camera is not available here (HTTPS or localhost required)");
     return;
   }
-  stopCamera();
-  setStatus("Starting camera...");
+  if (camStarting) return setStatus("Camera is already starting — wait a moment");
+  camStarting = true;
   try {
-    const pre = (await navigator.mediaDevices.enumerateDevices())
-      .filter((d) => d.kind === "videoinput");
-    setStatus(`Found ${pre.length} video input device(s)`);
-  } catch (e) {
-    setStatus(`enumerateDevices failed: ${e.message}`);
+    stopCamera();
+    setStatus("Starting camera...");
+    // device census in the background — enumerateDevices can stall on some browsers,
+    // so never let it block the actual getUserMedia call
+    navigator.mediaDevices.enumerateDevices()
+      .then((ds) => setStatus(
+        `Found ${ds.filter((d) => d.kind === "videoinput").length} video input device(s)`))
+      .catch((e) => setStatus(`enumerateDevices failed: ${e.message}`));
+    // Quest Browser can be picky about constraints — fall back to plain video:true
+    let stream = null;
+    let lastErr = null;
+    for (const constraints of [cameraConstraints(), { video: true, audio: false }]) {
+      setStatus(`getUserMedia(${JSON.stringify(constraints.video).slice(0, 40)})...`);
+      try {
+        stream = await Promise.race([
+          navigator.mediaDevices.getUserMedia(constraints),
+          new Promise((_, rej) => setTimeout(
+            () => rej(Object.assign(new Error("no response for 15s (permission dialog pending?)"),
+                                    { name: "Timeout" })), 15000)),
+        ]);
+        break;
+      } catch (err) {
+        lastErr = err;
+        setStatus(`→ failed: ${err.name}: ${err.message}`);
+      }
+    }
+    if (!stream) {
+      console.error(lastErr);
+      setStatus(`Could not start the camera: ${lastErr?.name}: ${lastErr?.message}`);
+      return;
+    }
+    camStream = stream;
+    const track = stream.getVideoTracks()[0];
+    setStatus(`→ got stream (${track?.label || "?"}) — waiting for frames...`);
+    camVideo.srcObject = stream;
+    camBox.style.display = "block";
+    camToggle.textContent = "Stop camera";
+    try { await camVideo.play(); } catch (e) { setStatus(`video.play(): ${e.message}`); }
+    // wait for real frames before declaring victory
+    const t0 = performance.now();
+    while (camVideo.videoWidth === 0 && performance.now() - t0 < 8000 && camStream === stream) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (camStream !== stream) return; // stopped/restarted meanwhile
+    const label = track?.label || "camera";
+    if (camVideo.videoWidth > 0) {
+      setStatus(`Camera running: ${camVideo.videoWidth}×${camVideo.videoHeight} (${label})`);
+    } else {
+      // Capture can still work via ImageCapture.grabFrame() even when the
+      // <video> element never receives frames (seen on some headset browsers)
+      setStatus(`Camera opened (${label}) but the preview has no frames — capture may still work`);
+    }
+    populateCameraList();
+  } finally {
+    camStarting = false;
   }
-  // Quest Browser can be picky about constraints — fall back to plain video:true
-  let stream = null;
-  let lastErr = null;
-  for (const constraints of [cameraConstraints(), { video: true, audio: false }]) {
-    setStatus(`getUserMedia(${JSON.stringify(constraints.video).slice(0, 40)})...`);
+}
+
+/** Pull one frame from the camera, preferring ImageCapture (works even when the
+ *  <video> element is starved, e.g. while an immersive session hides the page). */
+async function grabCameraFrame() {
+  const track = camStream?.getVideoTracks()[0];
+  if (!track) throw new Error("no camera track");
+  if (track.readyState !== "live") throw new Error(`camera track is ${track.readyState}`);
+  if (track.muted) setStatus("Note: camera track reports muted");
+  if ("ImageCapture" in window) {
     try {
-      stream = await Promise.race([
-        navigator.mediaDevices.getUserMedia(constraints),
-        new Promise((_, rej) => setTimeout(
-          () => rej(Object.assign(new Error("no response for 15s (permission dialog pending?)"),
-                                  { name: "Timeout" })), 15000)),
-      ]);
-      break;
-    } catch (err) {
-      lastErr = err;
-      setStatus(`→ failed: ${err.name}: ${err.message}`);
+      const bmp = await new ImageCapture(track).grabFrame();
+      if (bmp?.width) return bmp;
+    } catch (e) {
+      setStatus(`grabFrame failed (${e.message}) — falling back to <video>`);
     }
   }
-  if (!stream) {
-    console.error(lastErr);
-    setStatus(`Could not start the camera: ${lastErr?.name}: ${lastErr?.message}`);
-    return;
-  }
-  camStream = stream;
-  camVideo.srcObject = stream;
-  camBox.style.display = "block";
-  camToggle.textContent = "Stop camera";
-  try { await camVideo.play(); } catch (e) { console.warn("video.play()", e); }
-  // wait for real frames before declaring victory
-  const t0 = performance.now();
-  while (camVideo.videoWidth === 0 && performance.now() - t0 < 8000 && camStream === stream) {
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  if (camStream !== stream) return; // stopped/restarted meanwhile
-  const label = stream.getVideoTracks()[0]?.label || "camera";
-  if (camVideo.videoWidth > 0) {
-    setStatus(`Camera running: ${camVideo.videoWidth}×${camVideo.videoHeight} (${label})`);
-  } else {
-    setStatus(`Camera opened (${label}) but no frames arrived — try another camera in the list`);
-  }
-  populateCameraList();
+  if (camVideo.videoWidth === 0) throw new Error("no video frames available");
+  return camVideo;
 }
 
 function stopCamera() {
@@ -566,17 +603,17 @@ document.getElementById("camFacing").addEventListener("change", () => {
 document.getElementById("camShot").addEventListener("click", async () => {
   if (!embedder) return setStatus("Dataset is still loading — wait a moment");
   if (!camStream) return setStatus("Start the camera first");
-  if (camVideo.videoWidth === 0)
-    return setStatus("No video frames yet — wait a moment or pick another camera");
-  setStatus("Embedding the captured photo...");
+  setStatus("Capturing...");
   try {
-    const { posA, posB, thumb } = await embedder.embed(camVideo);
+    const frame = await grabCameraFrame();
+    const { posA, posB, thumb } = await embedder.embed(frame);
+    frame.close?.();
     addUserPoint(posA, posB, thumb);
     flyTo(posA, posB);
     setStatus("Added the captured photo (white-framed point)");
   } catch (err) {
     console.error(err);
-    setStatus(`Embedding failed: ${err.message}`);
+    setStatus(`Capture failed: ${err.message}`);
   }
 });
 
@@ -634,6 +671,7 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 
+setStatus(navigator.userAgent);
 loadDataset(document.getElementById("dataset").value);
 
 // debug hook (also handy for testing the VR capture path without a headset)
