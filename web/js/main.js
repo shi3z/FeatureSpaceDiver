@@ -2,10 +2,10 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { VRButton } from "three/addons/webxr/VRButton.js";
 import { PointCloud } from "./pointcloud.js";
-import { DigitEmbedder, PhotoEmbedder } from "./embed.js?v=9";
+import { DigitEmbedder, PhotoEmbedder } from "./embed.js?v=10";
 
 const WORLD_SCALE = 18;
-const BUILD = "2026-08-27 #9 (grabFrame + build id)";
+const BUILD = "2026-08-27 #10 (permission diagnostics)";
 
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -522,6 +522,16 @@ async function startCamera() {
     } catch (e) {
       setStatus(`enumerateDevices threw: ${e.message}`);
     }
+    // report the browser's own view of the camera permission (granted/denied/prompt)
+    try {
+      const st = await Promise.race([
+        navigator.permissions.query({ name: "camera" }),
+        new Promise((r) => setTimeout(() => r(null), 3000)),
+      ]);
+      if (st) setStatus(`Camera permission state: ${st.state}`);
+    } catch (e) {
+      setStatus(`permissions.query unsupported (${e.message})`);
+    }
     // Quest Browser can be picky about constraints — fall back to plain video:true
     let stream = null;
     let lastErr = null;
@@ -543,6 +553,13 @@ async function startCamera() {
     if (!stream) {
       console.error(lastErr);
       setStatus(`Could not start the camera: ${lastErr?.name}: ${lastErr?.message}`);
+      if (lastErr?.name === "NotAllowedError") {
+        setStatus("Hint: enable Camera for Meta Quest Browser in Settings > Privacy & safety > App permissions, and check the site permission (lock icon in the URL bar)");
+      } else if (lastErr?.name === "NotFoundError" || lastErr?.name === "DevicesNotFoundError") {
+        setStatus("Hint: no camera device exposed — needs Quest 3/3S on Horizon OS v74+ and an up-to-date Browser app; Quest 2/Pro cannot expose the passthrough camera");
+      } else if (lastErr?.name === "NotReadableError") {
+        setStatus("Hint: the camera is blocked or in use by another app — close other camera apps and retry");
+      }
       return;
     }
     camStream = stream;
