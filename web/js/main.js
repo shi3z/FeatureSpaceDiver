@@ -2,9 +2,10 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { VRButton } from "three/addons/webxr/VRButton.js";
 import { PointCloud } from "./pointcloud.js";
-import { DigitEmbedder, PhotoEmbedder } from "./embed.js";
+import { DigitEmbedder, PhotoEmbedder } from "./embed.js?v=9";
 
 const WORLD_SCALE = 18;
+const BUILD = "2026-08-27 #9 (grabFrame + build id)";
 
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -513,10 +514,14 @@ async function startCamera() {
     setStatus("Starting camera...");
     // device census in the background — enumerateDevices can stall on some browsers,
     // so never let it block the actual getUserMedia call
-    navigator.mediaDevices.enumerateDevices()
-      .then((ds) => setStatus(
-        `Found ${ds.filter((d) => d.kind === "videoinput").length} video input device(s)`))
-      .catch((e) => setStatus(`enumerateDevices failed: ${e.message}`));
+    try {
+      navigator.mediaDevices.enumerateDevices()
+        .then((ds) => setStatus(
+          `Found ${ds.filter((d) => d.kind === "videoinput").length} video input device(s)`))
+        .catch((e) => setStatus(`enumerateDevices failed: ${e.message}`));
+    } catch (e) {
+      setStatus(`enumerateDevices threw: ${e.message}`);
+    }
     // Quest Browser can be picky about constraints — fall back to plain video:true
     let stream = null;
     let lastErr = null;
@@ -562,6 +567,9 @@ async function startCamera() {
       setStatus(`Camera opened (${label}) but the preview has no frames — capture may still work`);
     }
     populateCameraList();
+  } catch (err) {
+    console.error(err);
+    setStatus(`startCamera error: ${err?.name || ""} ${err?.message || err}`);
   } finally {
     camStarting = false;
   }
@@ -671,6 +679,7 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 
+setStatus(`Build: ${BUILD}`);
 setStatus(navigator.userAgent);
 loadDataset(document.getElementById("dataset").value);
 
