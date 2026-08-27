@@ -1,0 +1,23 @@
+{
+ "name": "CIFAR-10",
+ "count": 8000,
+ "spritePx": 32,
+ "atlasCols": 90,
+ "atlasPx": 2880,
+ "atlasMode": "rgb",
+ "classes": [
+  "airplane",
+  "automobile",
+  "bird",
+  "cat",
+  "deer",
+  "dog",
+  "frog",
+  "horse",
+  "ship",
+  "truck"
+ ],
+ "stateA": "MobileNetV2 embedding (unsupervised UMAP)",
+ "stateB": "Supervised UMAP (label-separated)",
+ "userInput": "upload"
+}

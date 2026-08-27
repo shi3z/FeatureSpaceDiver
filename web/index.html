@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feature Space Diver</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; overflow: hidden; background: #02030a; color: #dde3f0;
+         font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; }
+  #app canvas { display: block; }
+
+  .panel { position: fixed; background: rgba(8,12,26,.82); border: 1px solid #2a3558;
+           border-radius: 10px; padding: 12px 14px; backdrop-filter: blur(6px);
+           font-size: 13px; }
+  #hud { top: 14px; left: 14px; width: 300px; }
+  #hud h1 { font-size: 16px; margin: 0 0 8px; letter-spacing: .06em; }
+  #hud h1 span { color: #6ea8ff; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+  select, button { background: #16204a; color: #dde3f0; border: 1px solid #35437a;
+                   border-radius: 6px; padding: 5px 10px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #223070; }
+  input[type=range] { flex: 1; accent-color: #6ea8ff; }
+  .statelbl { font-size: 11px; color: #8fa0c8; display: flex; justify-content: space-between; }
+  #status { font-size: 11px; color: #7c89ad; margin-top: 6px; min-height: 14px; }
+
+  #legend { bottom: 14px; left: 14px; max-width: 46vw; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px;
+          background: rgba(20,28,58,.7); border-radius: 999px; padding: 2px 9px 2px 4px; }
+  .chip i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+
+  #info { top: 14px; right: 14px; width: 140px; text-align: center; display: none; }
+  #infoImg { width: 112px; height: 112px; image-rendering: pixelated; border-radius: 6px;
+             background: #000; }
+  #infoLabel { font-size: 14px; font-weight: 600; margin-top: 6px; }
+
+  #addbox { bottom: 14px; right: 14px; width: 200px; }
+  #addbox h2 { font-size: 12px; margin: 0 0 6px; color: #8fa0c8; }
+  #pad { width: 168px; height: 168px; background: #000; border-radius: 6px;
+         touch-action: none; cursor: crosshair; }
+  #file { width: 100%; font-size: 11px; }
+  #camVideo { width: 100%; border-radius: 6px; background: #000; margin-top: 6px; }
+  .hint { font-size: 10px; color: #667190; margin-top: 6px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="panel" id="hud">
+  <h1>FEATURE SPACE <span>DIVER</span></h1>
+  <div class="row">
+    <label>データ</label>
+    <select id="dataset">
+      <option value="mnist">MNIST（数字）</option>
+      <option value="cifar10">一般画像（CIFAR-10）</option>
+    </select>
+  </div>
+  <div class="statelbl"><span id="labelA">State A</span><span id="labelB">State B</span></div>
+  <div class="row">
+    <button id="toA">A</button>
+    <input type="range" id="morph" min="0" max="1" step="0.001" value="0">
+    <button id="toB">B</button>
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="auto"> 自動往復</label>
+    <label style="margin-left:auto">点サイズ</label>
+    <input type="range" id="psize" min="0.3" max="4" step="0.1" value="1" style="width:70px">
+  </div>
+  <div id="status"></div>
+  <div class="hint">ドラッグ: 回転 / ホイール: ズーム / 右ドラッグ: 平行移動 / Space: A⇔B切替<br>
+  VR: 左スティック=移動, 右スティック=旋回・上下, トリガー=A⇔B, グリップ=加速</div>
+</div>
+
+<div class="panel" id="legend"></div>
+
+<div class="panel" id="info">
+  <canvas id="infoImg" width="112" height="112"></canvas>
+  <div id="infoLabel"></div>
+</div>
+
+<div class="panel" id="addbox">
+  <div id="drawPanel">
+    <h2>数字を描いて空間に追加</h2>
+    <canvas id="pad" width="224" height="224"></canvas>
+    <div class="row">
+      <button id="padAdd">追加</button>
+      <button id="padClear">消去</button>
+    </div>
+    <div class="hint">描いた数字がエンコーダを通って潜在空間に飛び込みます（白枠の点）。</div>
+  </div>
+  <div id="uploadPanel" style="display:none">
+    <h2>画像を追加</h2>
+    <input type="file" id="file" accept="image/*" multiple>
+    <div class="row">
+      <button id="camToggle">📷 カメラ起動</button>
+    </div>
+    <div id="camBox" style="display:none">
+      <video id="camVideo" autoplay playsinline muted></video>
+      <div class="row">
+        <button id="camShot">撮影して追加</button>
+        <select id="camFacing">
+          <option value="environment">背面</option>
+          <option value="user">前面</option>
+        </select>
+      </div>
+    </div>
+    <div class="hint">アップロード/撮影した画像をブラウザ内のMobileNetV2で埋め込み、
+    同じ特徴空間に配置します（白枠の点）。</div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

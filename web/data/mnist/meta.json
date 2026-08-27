@@ -1,0 +1,23 @@
+{
+ "name": "MNIST",
+ "count": 8000,
+ "spritePx": 28,
+ "atlasCols": 90,
+ "atlasPx": 2520,
+ "atlasMode": "luminance",
+ "classes": [
+  "0",
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9"
+ ],
+ "stateA": "Autoencoder (unsupervised)",
+ "stateB": "Semi-supervised fine-tune",
+ "userInput": "draw"
+}
