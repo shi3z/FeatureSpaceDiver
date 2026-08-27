@@ -2,10 +2,10 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { VRButton } from "three/addons/webxr/VRButton.js";
 import { PointCloud } from "./pointcloud.js";
-import { DigitEmbedder, PhotoEmbedder } from "./embed.js?v=10";
+import { DigitEmbedder, PhotoEmbedder } from "./embed.js?v=11";
 
 const WORLD_SCALE = 18;
-const BUILD = "2026-08-27 #10 (permission diagnostics)";
+const BUILD = "2026-08-27 #11 (OS-permission hints)";
 
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -335,12 +335,18 @@ hudPanel.visible = false; // shown only inside VR
 camera.add(hudPanel);
 
 function drawHud() {
+  // wrap long lines so hints stay readable inside VR
+  const rows = [];
+  for (const l of logLines.slice(-7)) {
+    for (let i = 0; i < l.length; i += 72) rows.push(l.slice(i, i + 72));
+  }
+  const show = rows.slice(-8);
   hudCtx.clearRect(0, 0, 1024, 256);
-  hudCtx.fillStyle = "rgba(5,8,20,0.72)";
+  hudCtx.fillStyle = "rgba(5,8,20,0.78)";
   hudCtx.fillRect(0, 0, 1024, 256);
   hudCtx.fillStyle = "#cfe0ff";
-  hudCtx.font = "30px sans-serif";
-  logLines.slice(-5).forEach((l, i) => hudCtx.fillText(l.slice(0, 62), 16, 42 + i * 42));
+  hudCtx.font = "24px sans-serif";
+  show.forEach((l, i) => hudCtx.fillText(l, 14, 30 + i * 29));
   hudTex.needsUpdate = true;
 }
 
@@ -516,8 +522,11 @@ async function startCamera() {
     // so never let it block the actual getUserMedia call
     try {
       navigator.mediaDevices.enumerateDevices()
-        .then((ds) => setStatus(
-          `Found ${ds.filter((d) => d.kind === "videoinput").length} video input device(s)`))
+        .then((ds) => {
+          const cams = ds.filter((d) => d.kind === "videoinput");
+          setStatus(`Found ${cams.length} video input device(s): ` +
+            (cams.map((d) => d.label || "(no label)").join(", ") || "-"));
+        })
         .catch((e) => setStatus(`enumerateDevices failed: ${e.message}`));
     } catch (e) {
       setStatus(`enumerateDevices threw: ${e.message}`);
@@ -541,8 +550,9 @@ async function startCamera() {
         stream = await Promise.race([
           navigator.mediaDevices.getUserMedia(constraints),
           new Promise((_, rej) => setTimeout(
-            () => rej(Object.assign(new Error("no response for 15s (permission dialog pending?)"),
-                                    { name: "Timeout" })), 15000)),
+            () => rej(Object.assign(
+              new Error("no response for 30s — look around for a system permission dialog"),
+              { name: "Timeout" })), 30000)),
         ]);
         break;
       } catch (err) {
@@ -559,6 +569,8 @@ async function startCamera() {
         setStatus("Hint: no camera device exposed — needs Quest 3/3S on Horizon OS v74+ and an up-to-date Browser app; Quest 2/Pro cannot expose the passthrough camera");
       } else if (lastErr?.name === "NotReadableError") {
         setStatus("Hint: the camera is blocked or in use by another app — close other camera apps and retry");
+      } else if (lastErr?.name === "Timeout") {
+        setStatus("Hint: browser permission is granted but the OS never answered — on the headset open Settings > Privacy & safety > App permissions > Camera and enable it for Meta Quest Browser (also check Settings > Apps > Meta Quest Browser > Permissions), then close ALL browser tabs and reopen this page");
       }
       return;
     }
