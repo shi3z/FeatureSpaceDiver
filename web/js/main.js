@@ -411,27 +411,75 @@ const camVideo = document.getElementById("camVideo");
 const camToggle = document.getElementById("camToggle");
 let camStream = null;
 
+function cameraConstraints() {
+  const v = document.getElementById("camFacing").value;
+  if (v.startsWith("id:")) return { video: { deviceId: { exact: v.slice(3) } }, audio: false };
+  return { video: { facingMode: v }, audio: false };
+}
+
+// After permission is granted, replace the generic Rear/Front choices with the
+// real camera list (on Quest 3 this exposes the passthrough cameras directly).
+async function populateCameraList() {
+  try {
+    const devs = (await navigator.mediaDevices.enumerateDevices())
+      .filter((d) => d.kind === "videoinput");
+    if (!devs.length) return;
+    const sel = document.getElementById("camFacing");
+    const currentId = camStream?.getVideoTracks()[0]?.getSettings?.().deviceId;
+    sel.innerHTML = "";
+    devs.forEach((d, i) => {
+      const o = document.createElement("option");
+      o.value = "id:" + d.deviceId;
+      o.textContent = d.label || `Camera ${i + 1}`;
+      sel.appendChild(o);
+    });
+    if (currentId) sel.value = "id:" + currentId;
+  } catch (e) {
+    console.warn("enumerateDevices failed", e);
+  }
+}
+
 async function startCamera() {
   if (!navigator.mediaDevices?.getUserMedia) {
     setStatus("Camera is not available here (HTTPS or localhost required)");
     return;
   }
-  try {
-    camStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: document.getElementById("camFacing").value,
-        width: { ideal: 640 },
-        height: { ideal: 480 },
-      },
-      audio: false,
-    });
-    camVideo.srcObject = camStream;
-    camBox.style.display = "block";
-    camToggle.textContent = "Stop camera";
-  } catch (err) {
-    console.error(err);
-    setStatus(`Could not start the camera: ${err.message}`);
+  stopCamera();
+  setStatus("Starting camera...");
+  // Quest Browser can be picky about constraints — fall back to plain video:true
+  let stream = null;
+  let lastErr = null;
+  for (const constraints of [cameraConstraints(), { video: true, audio: false }]) {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      break;
+    } catch (err) {
+      lastErr = err;
+    }
   }
+  if (!stream) {
+    console.error(lastErr);
+    setStatus(`Could not start the camera: ${lastErr?.name}: ${lastErr?.message}`);
+    return;
+  }
+  camStream = stream;
+  camVideo.srcObject = stream;
+  camBox.style.display = "block";
+  camToggle.textContent = "Stop camera";
+  try { await camVideo.play(); } catch (e) { console.warn("video.play()", e); }
+  // wait for real frames before declaring victory
+  const t0 = performance.now();
+  while (camVideo.videoWidth === 0 && performance.now() - t0 < 8000 && camStream === stream) {
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  if (camStream !== stream) return; // stopped/restarted meanwhile
+  const label = stream.getVideoTracks()[0]?.label || "camera";
+  if (camVideo.videoWidth > 0) {
+    setStatus(`Camera running: ${camVideo.videoWidth}×${camVideo.videoHeight} (${label})`);
+  } else {
+    setStatus(`Camera opened (${label}) but no frames arrived — try another camera in the list`);
+  }
+  populateCameraList();
 }
 
 function stopCamera() {
@@ -449,7 +497,10 @@ document.getElementById("camFacing").addEventListener("change", () => {
   if (camStream) { stopCamera(); startCamera(); }
 });
 document.getElementById("camShot").addEventListener("click", async () => {
-  if (!embedder || !camStream || camVideo.videoWidth === 0) return;
+  if (!embedder) return setStatus("Dataset is still loading — wait a moment");
+  if (!camStream) return setStatus("Start the camera first");
+  if (camVideo.videoWidth === 0)
+    return setStatus("No video frames yet — wait a moment or pick another camera");
   setStatus("Embedding the captured photo...");
   try {
     const { posA, posB, thumb } = await embedder.embed(camVideo);

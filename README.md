@@ -66,6 +66,17 @@ MobileNetV2 and the new point flies from your headset into its place in feature
 space (morphing with everything else when you pull the trigger).
 Requires Quest 3 / 3S on Horizon OS v74+ (older headsets don't expose the camera).
 
+Troubleshooting on Quest:
+- Start the camera once from the 2D page (the "Start camera" button) and check the
+  status line — it reports the resolution and camera name once frames arrive
+  (e.g. `Camera running: 1280×960 (...)`).
+- After granting permission, the camera dropdown lists the actual headset cameras;
+  if the picture stays black, pick another entry (left/right passthrough).
+- Make sure Horizon OS is v74 or later and that the Browser has the headset-camera
+  permission (Settings → Privacy & safety → App permissions → Camera).
+- Quest 2 / Quest Pro never expose the passthrough camera — the permission prompt
+  appears but no video device exists.
+
 On Meta Quest the **easiest way is to open the GitHub Pages demo URL (HTTPS)**.
 To view a local dev build on Quest you need HTTPS (or a localhost equivalent):
 
